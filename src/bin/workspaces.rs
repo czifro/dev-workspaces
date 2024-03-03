@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
-use workspaces::*;
+use dev_workspaces::*;
 
 #[derive(Parser)]
 #[command(name = "workspaces")]

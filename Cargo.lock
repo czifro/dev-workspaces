@@ -124,6 +124,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "acbf1af155f9b9ef647e42cdc158db4b64a1b61f743629225fde6f3e0be2a7c7"
 
 [[package]]
+name = "dev-workspaces"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "home",
+ "rstest",
+ "serde",
+ "serde_yaml",
+]
+
+[[package]]
 name = "equivalent"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -530,15 +542,3 @@ name = "windows_x86_64_msvc"
 version = "0.52.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32b752e52a2da0ddfbdbcc6fceadfeede4c939ed16d13e648833a61dfb611ed8"
-
-[[package]]
-name = "workspaces"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "home",
- "rstest",
- "serde",
- "serde_yaml",
-]
