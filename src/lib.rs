@@ -19,10 +19,13 @@ pub struct Workspace {
 pub struct Project;
 
 impl Config {
-    pub fn from_config_file() -> Result<Self> {
+    pub fn file_path() -> Result<PathBuf> {
         let home_dir = home::home_dir().expect("Could not determine home directory");
-        let config_file = home_dir.clone().join(".config/workspaces/workspaces.yaml");
-        let config_file = fs::read_to_string(config_file)
+        Ok(home_dir.clone().join(".config/workspaces/workspaces.yaml"))
+    }
+
+    pub fn from_config_file() -> Result<Self> {
+        let config_file = fs::read_to_string(Self::file_path()?)
             .context("Tried reading ~/.config/workspaces/workspaces.yaml")?;
 
         Self::from_str(config_file.as_str())
@@ -35,7 +38,7 @@ impl Config {
             .context("Tried loading config from ~/.config/workspaces/workspaces.yaml")
             .and_then(|c: Self| {
                 if !c.root.starts_with("~") {
-                    return Ok(c)
+                    return Ok(c);
                 }
                 let mut c = c;
                 c.root = home_dir
@@ -111,6 +114,63 @@ impl Workspace {
     }
 }
 
+pub struct DoctorDiagnosis {
+    missing_workspaces: Vec<PathBuf>,
+    missing_projects: Vec<PathBuf>,
+}
+
+impl DoctorDiagnosis {
+    pub fn print(&self) {
+        println!("Dev Workspaces Doctor Diagnosis:\n");
+
+        println!("The following workspaces are missing:\n");
+
+        for w in self.missing_workspaces.iter() {
+            println!(
+                "\t{:}",
+                w.clone()
+                    .into_os_string()
+                    .into_string()
+                    .expect("Something unexpected happened")
+            );
+        }
+        println!("");
+
+        println!("The following projects are missing:\n");
+
+        for p in self.missing_projects.iter() {
+            println!(
+                "\t{:}",
+                p.clone()
+                    .into_os_string()
+                    .into_string()
+                    .expect("Something unexpected happened")
+            );
+        }
+        println!("");
+    }
+}
+
+pub fn doctor(config: &Config) -> Result<DoctorDiagnosis> {
+    let missing_workspaces = config
+        .collect_workspace_paths()
+        .iter()
+        .filter(|p| !p.exists())
+        .map(Clone::clone)
+        .collect::<Vec<PathBuf>>();
+    let missing_projects = config
+        .collect_project_paths()
+        .iter()
+        .filter(|p| !p.exists())
+        .map(Clone::clone)
+        .collect::<Vec<PathBuf>>();
+
+    Ok(DoctorDiagnosis {
+        missing_workspaces,
+        missing_projects,
+    })
+}
+
 #[cfg(test)]
 mod should {
 
@@ -155,7 +215,8 @@ workspaces:
                 PathBuf::from("/some/root/w0/w1"),
                 PathBuf::from("/some/root/w0/w1/w2"),
                 PathBuf::from("/some/root/w0/w1/w2/w3"),
-            ].sort()
+            ]
+            .sort()
         );
     }
 
@@ -195,7 +256,8 @@ workspaces:
                 PathBuf::from("/some/root/w0/p0"),
                 PathBuf::from("/some/root/w0/w1/p1"),
                 PathBuf::from("/some/root/w0/w1/w2/p2"),
-            ].sort()
+            ]
+            .sort()
         );
     }
 }

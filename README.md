@@ -17,11 +17,12 @@ cargo install dev-workspaces --git https://github.com/czifro/dev-workspaces --bi
 Example:
 
 ```yaml
+# $HOME/.config/workspaces/workspaces.yaml
 root: ~/
 workspaces:
   src:
     workspaces:
-      nested
+      nested:
         workspaces: 
         projects:
           project_a:
@@ -46,6 +47,77 @@ workspaces:
 # /<expanded-home-dir>/src/nested/project_b
 # /<expanded-home-dir>/src/nested/project_c
 ```
+
+# CLI Usage
+
+```shell
+$ workspaces help
+A dev tool to simplify working with workspace directories
+
+Usage: workspaces <COMMAND>
+
+Commands:
+  list    List out managed paths
+  doctor  Show doctor diagnosis on managed workspaces and projects
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+
+$ workspaces help list
+List out managed paths
+
+Usage: workspaces list <COMMAND>
+
+Commands:
+  workspaces  List workspace paths
+  projects    List project paths
+  help        Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+
+$ workspaces list help workspaces
+List workspace paths
+
+Usage: workspaces list workspaces
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+
+$ workspaces list help projects
+List project paths
+
+Usage: workspaces list projects
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+
+$ workspaces help doctor
+Show doctor diagnosis on managed workspaces and projects
+
+Usage: workspaces doctor
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+
+$ workspaces help config
+Show config path
+
+Usage: workspaces config [OPTIONS]
+
+Options:
+  -q, --quiet    Quiet extraneous output
+  -h, --help     Print help
+  -V, --version  Print version
+
+```
+
 
 # Use Cases
 

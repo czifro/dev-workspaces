@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 
 use dev_workspaces::*;
@@ -8,14 +8,36 @@ use dev_workspaces::*;
 #[derive(Parser)]
 #[command(name = "workspaces")]
 #[command(bin_name = "workspaces")]
-enum WorkspacesCli {
+#[command(version, about, long_about = None)]
+#[command(propagate_version = true)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// List out managed paths
     #[command(subcommand)]
     List(ListCommand),
+
+    /// Show doctor diagnosis on managed workspaces and projects
+    Doctor,
+
+    /// Show config path
+    Config {
+        /// Quiet extraneous output
+        #[arg(short, long)]
+        quiet: bool,
+    },
 }
 
 #[derive(Subcommand)]
 enum ListCommand {
+    /// List workspace paths
     Workspaces,
+
+    /// List project paths
     Projects,
 }
 
@@ -26,10 +48,10 @@ fn main() -> Result<()> {
 
     let project_paths = config.collect_project_paths();
 
-    let cli = WorkspacesCli::parse();
+    let cli = Cli::parse();
 
-    match &cli {
-        WorkspacesCli::List(cmd) => {
+    match &cli.command {
+        Commands::List(cmd) => {
             match &cmd {
                 ListCommand::Workspaces => {
                     for p in workspace_paths.iter() {
@@ -50,6 +72,19 @@ fn main() -> Result<()> {
                     }
                 }
             };
+        }
+        Commands::Doctor { .. } => {
+            let diagnosis = doctor(&config).context("Tried to generate doctor diagnosis")?;
+            diagnosis.print();
+        }
+        Commands::Config { quiet } => {
+            let config_path = Config::file_path()?;
+            let config_path = config_path.into_os_string().into_string().unwrap();
+            if *quiet {
+                println!("{config_path}");
+            } else {
+                println!("Workspaces config path: {config_path}");
+            }
         }
     };
 
