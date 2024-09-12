@@ -1,6 +1,6 @@
 [package]
 name = "dev-workspaces"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "A dev tool to simplify working with workspace directories"
 repository = "https://github.com/czifro/dev-workspaces"
@@ -14,9 +14,12 @@ categories = ["command-line-utilities"]
 [dependencies]
 anyhow = "1.0.80"
 clap = { version = "4.5.1", features = ["derive"] }
+git2 = { version = "0.18.3", features = ["ssh"] }
 home = "0.5.9"
+lazy_static = "1.5.0"
 serde = { version = "1.0.197", features = ["derive"] }
 serde_yaml = "0.9.32"
+unicode-width = "0.1.13"
 
 [dev-dependencies]
 rstest = "0.18.2"

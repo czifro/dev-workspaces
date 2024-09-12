@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 
 use dev_workspaces::*;
 
@@ -24,6 +24,10 @@ enum Commands {
     /// Show doctor diagnosis on managed workspaces and projects
     Doctor,
 
+    /// Restore workspaces and projects
+    #[command(subcommand)]
+    Restore(RestoreCommand),
+
     /// Show config path
     Config {
         /// Quiet extraneous output
@@ -39,6 +43,41 @@ enum ListCommand {
 
     /// List project paths
     Projects,
+}
+
+#[derive(Subcommand)]
+enum RestoreCommand {
+    #[command(long_about = Some(r#"
+Restore a workspsce by relative path or all workspaces with the option to include projects
+
+Examples:
+   workspaces restore workspace path/of/workspace
+   workspaces restore workspace path/of/workspace --include-projects
+   workspaces restore workspace --all
+"#))]
+    Workspace {
+        /// Restore a workspace by path
+        path: Option<String>,
+        /// Restore projects in the workspace
+        #[arg(long)]
+        include_projects: bool,
+        /// Restore all workspaces
+        #[arg(long)]
+        all: bool,
+    },
+    #[command(long_about = Some(r#"
+Restore a project by relative path
+
+Example:
+   workspaces restore project path/of/workspace/project
+"#))]
+    Project(RestoreProjectCommand),
+}
+
+#[derive(Args)]
+struct RestoreProjectCommand {
+    /// Restore a project by path
+    path: String,
 }
 
 fn main() -> Result<()> {
@@ -85,6 +124,44 @@ fn main() -> Result<()> {
             } else {
                 println!("Workspaces config path: {config_path}");
             }
+        }
+        Commands::Restore(cmd) => {
+            match &cmd {
+                RestoreCommand::Workspace {
+                    path,
+                    include_projects,
+                    all,
+                } => {
+                    if *all {
+                        return restore(
+                            &config,
+                            RestoreOption::AllWorkspaces {
+                                include_projects: *include_projects,
+                            },
+                        )
+                        .context("Failed to restore all");
+                    }
+                    let path = path
+                        .clone()
+                        .ok_or_else(|| anyhow::anyhow!("Workspace path is required"))?;
+                    restore(
+                        &config,
+                        RestoreOption::Workspace {
+                            ws_path: PathBuf::from(path),
+                            include_projects: *include_projects,
+                        },
+                    )
+                    .context("Failed to restore workspace")?;
+                }
+                RestoreCommand::Project(RestoreProjectCommand { path }) => {
+                    restore(
+                        &config,
+                        RestoreOption::Project {
+                            proj_path: PathBuf::from(path),
+                        },
+                    ).context("Failed to restore project")?;
+                },
+            };
         }
     };
 

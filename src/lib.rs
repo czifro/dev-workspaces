@@ -1,117 +1,144 @@
-use std::{collections::HashMap, fs, path::PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{anyhow, Context, Result};
-use serde::Deserialize;
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct Config {
-    root: String,
-    workspaces: HashMap<String, Workspace>,
+mod config;
+mod git;
+
+pub use config::*;
+use git::Git;
+
+pub(crate) fn path_buf_to_string(path: PathBuf) -> Result<String> {
+    path.into_os_string()
+        .into_string()
+        .map_err(|os| anyhow!("{:#?}", os))
+        .context("Tried converting path to string")
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct Workspace {
-    projects: HashMap<String, Project>,     // make optional
-    workspaces: HashMap<String, Workspace>, // make optional
+pub(crate) fn try_absolute_path(path: String) -> Result<String> {
+    let path = PathBuf::from(path);
+    let path: PathBuf = match path.strip_prefix("~") {
+        Err(_) => path,
+        Ok(path) => {
+            let home_dir = home::home_dir().unwrap();
+            home_dir.join(path)
+        }
+    };
+
+    path_buf_to_string(path).context("Tried making path absolute")
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct Project;
-
-impl Config {
-    pub fn file_path() -> Result<PathBuf> {
-        let home_dir = home::home_dir().expect("Could not determine home directory");
-        Ok(home_dir.clone().join(".config/workspaces/workspaces.yaml"))
-    }
-
-    pub fn from_config_file() -> Result<Self> {
-        let config_file = fs::read_to_string(Self::file_path()?)
-            .context("Tried reading ~/.config/workspaces/workspaces.yaml")?;
-
-        Self::from_str(config_file.as_str())
-    }
-
-    pub(crate) fn from_str(contents: &str) -> Result<Self> {
-        let home_dir = home::home_dir().expect("Could not determine home directory");
-
-        serde_yaml::from_str(contents)
-            .context("Tried loading config from ~/.config/workspaces/workspaces.yaml")
-            .and_then(|c: Self| {
-                if !c.root.starts_with("~") {
-                    return Ok(c);
-                }
-                let mut c = c;
-                c.root = home_dir
-                    .into_os_string()
-                    .into_string()
-                    .map_err(|err| anyhow!("Error: {:?}", err))
-                    .context("Something unexpected happened")?;
-                Ok(c)
-            })
-    }
-
-    pub fn collect_workspace_paths(&self) -> Vec<PathBuf> {
-        let parent = PathBuf::from(self.root.clone());
-
-        self.workspaces
-            .iter()
-            .map(|(name, ws)| {
-                let path = parent.clone().join(name);
-                let mut nested = ws.collect_workspace_paths(path.clone());
-                nested.push(path);
-                nested
-            })
-            .collect::<Vec<Vec<PathBuf>>>()
-            .concat()
-    }
-
-    pub fn collect_project_paths(&self) -> Vec<PathBuf> {
-        let parent = PathBuf::from(self.root.clone());
-
-        self.workspaces
-            .iter()
-            .map(|(name, ws)| {
-                let path = parent.clone().join(name);
-                ws.collect_project_paths(path.clone())
-            })
-            .collect::<Vec<Vec<PathBuf>>>()
-            .concat()
-    }
+pub(crate) fn absolute_path(path: String) -> String {
+    try_absolute_path(path).unwrap()
 }
 
-impl Workspace {
-    pub fn collect_workspace_paths(&self, parent: PathBuf) -> Vec<PathBuf> {
-        self.workspaces
-            .iter()
-            .map(|(name, ws)| {
-                let path = parent.clone().join(name);
-                let mut nested = ws.collect_workspace_paths(path.clone());
-                nested.push(path);
-                nested
-            })
-            .collect::<Vec<Vec<PathBuf>>>()
-            .concat()
+pub enum RestoreOption {
+    Workspace {
+        ws_path: PathBuf,
+        include_projects: bool,
+    },
+    AllWorkspaces {
+        include_projects: bool,
+    },
+    Project {
+        proj_path: PathBuf,
+    },
+}
+
+pub fn restore(config: &Config, opt: RestoreOption) -> Result<()> {
+    let diagnosis = doctor(config)?;
+
+    match opt {
+        RestoreOption::Workspace {
+            ws_path,
+            include_projects,
+        } => {
+            let ws = config.lookup_workspace(&ws_path)?;
+
+            // match ws_path.parent() {
+            //     Some(parent) if parent != Path::new("") => {
+            //         restore(
+            //             config,
+            //             RestoreOption::Workspace {
+            //                 ws_path: parent.to_path_buf(),
+            //                 include_projects: false,
+            //             },
+            //         )?;
+            //     }
+            //     _ => {}
+            // }
+
+            let mut ws_path = ws_path;
+            if !ws_path.starts_with(&config.root) {
+                ws_path = PathBuf::from(&config.root).join(ws_path);
+            }
+            let ws_path = ws_path;
+
+            if diagnosis.missing_workspaces.contains(&ws_path) {
+                fs::create_dir(&ws_path).context("Tried restoring workspace")?;
+            }
+
+            if !include_projects {
+                return Ok(());
+            }
+
+            for project in ws.collect_project_paths(&ws_path).iter() {
+                restore_project(&config, &project)?;
+            }
+        }
+        RestoreOption::AllWorkspaces { include_projects } => {
+            for ws_path in diagnosis.missing_workspaces.iter() {
+                restore(
+                    config,
+                    RestoreOption::Workspace {
+                        ws_path: ws_path.clone(),
+                        include_projects,
+                    },
+                )?;
+            }
+        }
+        RestoreOption::Project { proj_path } => {
+            restore(
+                config,
+                RestoreOption::Workspace {
+                    ws_path: proj_path.parent().unwrap().to_path_buf(),
+                    include_projects: false,
+                },
+            )?;
+
+            let mut proj_path = proj_path;
+            if !proj_path.starts_with(&config.root) {
+                proj_path = PathBuf::from(&config.root).join(proj_path);
+            }
+            let proj_path = proj_path;
+
+            if !diagnosis.missing_projects.contains(&proj_path) {
+                return Ok(());
+            }
+
+            restore_project(config, &proj_path)?;
+        }
+    };
+
+    Ok(())
+}
+
+fn restore_project(config: &Config, proj_path: &PathBuf) -> Result<()> {
+    if proj_path.exists() {
+        return Ok(());
     }
+    let project = config.lookup_project(proj_path)?;
 
-    pub fn collect_project_paths(&self, parent: PathBuf) -> Vec<PathBuf> {
-        let projects = self
-            .projects
-            .iter()
-            .map(|(name, _)| parent.clone().join(name))
-            .collect::<Vec<PathBuf>>();
+    let Some(ref proj_git) = project.git else {
+        return fs::create_dir(proj_path).context("Tried creating project directory");
+    };
 
-        let nested_projects = self
-            .workspaces
-            .iter()
-            .map(|(name, ws)| {
-                let path = parent.clone().join(name);
-                ws.collect_project_paths(path.clone())
-            })
-            .collect::<Vec<Vec<PathBuf>>>()
-            .concat();
+    let mut g = Git::new(proj_path.clone(), proj_git.clone());
 
-        vec![projects, nested_projects].concat()
-    }
+    g.clone()
 }
 
 pub struct DoctorDiagnosis {
